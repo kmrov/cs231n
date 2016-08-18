@@ -134,6 +134,13 @@ class FullyConnectedNet(object):
     self.dtype = dtype
     self.params = {}
 
+    all_dims = [input_dim] + hidden_dims + [num_classes]
+
+    for i in xrange(1, len(all_dims)):
+      self.params['W' + str(i)] = np.random.normal(
+            0, weight_scale, (all_dims[i-1], all_dims[i]))
+      self.params['b' + str(i)] = np.zeros(all_dims[i])
+
     ############################################################################
     # TODO: Initialize the parameters of the network, storing all values in    #
     # the self.params dictionary. Store weights and biases for the first layer #
@@ -191,7 +198,56 @@ class FullyConnectedNet(object):
       for bn_param in self.bn_params:
         bn_param[mode] = mode
 
+    L = self.num_layers
+
     scores = None
+
+    Xs = [X]
+    caches = []
+
+    for l in xrange(1, L):
+      X_l, cache_l = affine_relu_forward(
+                        Xs[l-1],
+                        self.params["W" + str(l)],
+                        self.params["b" + str(l)])
+      Xs.append(X_l)
+      caches.append(cache_l)
+
+    X_l, cache_l = affine_forward(
+                          Xs[-1],
+                          self.params["W" + str(L)],
+                          self.params["b" + str(L)])
+    Xs.append(X_l)
+    caches.append(cache_l)
+
+    scores = X_l
+
+    # If test mode return early
+    if mode == 'test':
+      return scores
+
+    loss, dX = softmax_loss(scores, y)
+
+    loss += 0.5 * self.reg * (
+        np.sum(
+            [np.sum(self.params["W" + str(i+1)]**2) \
+              for i in xrange(L)]
+        )
+    )
+
+    grads = {}
+
+    dX_l, grads["W" + str(L)], grads["b" + str(L)] = affine_backward(
+          dX, caches[-1]
+    )
+    grads["W" + str(L)] += self.reg * self.params["W" + str(L)]
+
+    for l in xrange(L-1, 0, -1):
+      dX_l, grads["W" + str(l)], grads["b" + str(l)] = affine_relu_backward(
+        dX_l, caches[l-1]
+      )
+      grads["W" + str(l)] += self.reg * self.params["W" + str(l)]
+
     ############################################################################
     # TODO: Implement the forward pass for the fully-connected net, computing  #
     # the class scores for X and storing them in the scores variable.          #
@@ -209,11 +265,7 @@ class FullyConnectedNet(object):
     #                             END OF YOUR CODE                             #
     ############################################################################
 
-    # If test mode return early
-    if mode == 'test':
-      return scores
 
-    loss, grads = 0.0, {}
     ############################################################################
     # TODO: Implement the backward pass for the fully-connected net. Store the #
     # loss in the loss variable and gradients in the grads dictionary. Compute #
